@@ -21,12 +21,29 @@ def fetch_binance_klines(
     """
     Fetch up to `limit` closed hourly bars from Binance public API.
     No API key needed — fully public endpoint.
+
+    NOTE: api.binance.com is geo-blocked in some regions (e.g. India).
+    We use data-api.binance.vision as the primary URL — same data, no geo-block.
+    Falls back to api.binance.com if the vision mirror fails.
     Returns DataFrame with: open_time, open, high, low, close, volume
     """
-    url = "https://api.binance.com/api/v3/klines"
+    # data-api.binance.vision is the geo-unblocked mirror (works in India, etc.)
+    URLS = [
+        "https://data-api.binance.vision/api/v3/klines",
+        "https://api.binance.com/api/v3/klines",
+    ]
     params = {"symbol": symbol, "interval": interval, "limit": limit}
-    resp = requests.get(url, params=params, timeout=10)
-    resp.raise_for_status()
+    last_err = None
+    for url in URLS:
+        try:
+            resp = requests.get(url, params=params, timeout=10)
+            resp.raise_for_status()
+            break
+        except Exception as e:
+            last_err = e
+            continue
+    else:
+        raise RuntimeError(f"All Binance endpoints failed. Last error: {last_err}")
 
     df = pd.DataFrame(resp.json(), columns=[
         "open_time", "open", "high", "low", "close", "volume",
